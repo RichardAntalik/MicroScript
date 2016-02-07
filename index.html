@@ -1,0 +1,76 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <title>MicroScript</title>
+    <meta http-equiv="content-type" content="text/html;charset=UTF-8">
+    <script src="http://code.jquery.com/jquery-latest.min.js"></script>
+    <script src="https://raw.githubusercontent.com/ajaxorg/ace-builds/master/src-min/ace.js" type="text/javascript" charset="utf-8"></script>
+
+</head>
+<body>
+<div style="width: 100%; height: 450px;">
+<div id="editor" style="width:49%; height:99%; display:inline-block; float: left;">
+
+o1 = {
+    a: 3,
+    b: 4+5
+};
+
+
+</div>
+    <div id="container" style="margin:0px; width:50%; height:100%;display:inline-block; float: right;">
+
+        <div id="output" style="margin:0px;height: 100%;width: 400px;display: inline-block;border: 1px solid #999;overflow: auto;
+">
+        </div>
+    </div>
+</div>
+
+
+<script>
+    var editor = ace.edit("editor");
+    editor.setTheme("ace/theme/monokai");
+    editor.getSession().setMode("ace/mode/javascript");
+</script>
+
+<div id="toolbar" style="width:100%; height:50px; margin: 5px">
+    <input type="button" id="ms-translate" value="Translate"/>
+    <input type="button" id="ms-simulate" value="Simulate"/>
+    <input type="button" id="ms-step" value="Step"/>
+    <input type="button" id="ms-parse" value="Parse"/>
+</div>
+<script src="log.js"></script>
+
+<script src="ms.js"></script>
+<script src="sim.js"></script>
+<script src="r.js"></script>
+<script src="asm.js"></script>
+
+<script>
+
+var pe = $('#output');
+/*
+a1 = new sim.led(pe, r.pa, 0);
+a2 = new sim.led(pe, r.pa, 1);
+a3 = new sim.led(pe, r.pa, 2);
+a4 = new sim.led(pe, r.pa, 3);
+/*a5 = new sim.led(pe, r.pa, 4);
+a6 = new sim.led(pe, r.pa, 5);
+a7 = new sim.led(pe, r.pa, 6);
+a8 = new sim.led(pe, r.pa, 7);*/
+
+ms.gridMan.outputEl = pe;
+ms.gridMan.createCells(15,15);
+$(document).on('click', '#ms-step', function () {
+    ms.simulator.step();
+});
+$(document).on('click', '#ms-simulate', function () {
+    sim.simulateSelection();
+});
+$(document).on('click', '#ms-parse', function () {
+    console.log("fasasf");
+    ms.parser.parse();
+});
+</script>
+</body>
+</html>	
