@@ -167,11 +167,51 @@ var ms = {
 		parse: function (){
 			logger.e('parse');
 			this.msGlobal = new ms.fun('msGlobal', [], ms.preprocessor.preprocess());
-			this.parseFunction(this.msGlobal);
-
+			this.parseFunction(this.msGlobal);		//PASS 1 - translate object literals
+			logger.l('parsed:', this.msGlobal);
+			this.msGlobal.pointer = 0;
+			this.packStatements(this.msGlobal);
 			logger.l('parsed:', this.msGlobal);
 			logger.x('parse');
 			return this.msGlobal;
+		},
+		packObjectMemberFunctionStatements:function(NS){ //naming this fn took about 15 minutes
+			logger.e();
+			logger.l('packing in',NS);
+			for(var member in NS.members){
+				if (!NS.members.hasOwnProperty(member)) {
+					logger.l('NS do not have property',NS.members, member);
+					continue;
+				}
+				logger.l('iterating over', NS.members[member]);
+				if(NS.members[member]instanceof ms.fun){
+					this.packStatements(NS.members[member]);
+				} else if (NS.members[member]instanceof ms.obj || NS.members[member] instanceof ms.arr){
+					this.packObjectMemberFunctionStatements(NS.members[member]);
+				}
+			}
+			logger.x();
+		},
+		packStatements:function(NS){
+			logger.e();
+			logger.l('packing in', NS);
+			var packedStatements = [];
+			var pack = [];
+			while (NS.getStatement()){
+				pack.push(NS.getStatement());
+				if(NS.getStatement() === ';'){
+					packedStatements.push(pack);
+					pack = [];
+				} else if (NS.getStatement() instanceof ms.fun){
+					this.packStatements(NS.getStatement());
+				} else if (NS.getStatement() instanceof ms.obj || NS.getStatement() instanceof ms.arr){
+					logger.l('got object to pack', NS.getStatement());
+					this.packObjectMemberFunctionStatements(NS.getStatement());
+				}
+				NS.nextStatement();
+			}
+			NS.statements = packedStatements;
+			logger.x();
 		},
 		parseExpression:function (NS, memberName) {
 			logger.e('parseExpression');
@@ -186,6 +226,9 @@ var ms = {
 					NS.nextRaw(2);
 				} else {
 					msfun = new ms.fun(NS.getRaw(1), NS.getRaw(2), NS.getRaw(3));		//named declaration
+					if(NS.getRaw(-1) !== '=' && NS.primitiveType === 'Function'){
+						NS.msvars[NS.getRaw(1)] = msfun;
+					}
 					NS.nextRaw(3);
 				}
 				this.parseFunction(msfun);
@@ -215,7 +258,7 @@ var ms = {
 				parsed = new ms.null();
 						//											===========[  NUMBER  ]=========== //TODO splitter produces bad numbers
 			} else if(numRE.test(NS.getRaw()[0])){
-				parsed = new ms.num(Number(NS.getRaw()));
+					parsed = new ms.num(Number(NS.getRaw()));
 						//											===========[  STRING  ]===========
 			} else if(NS.getRaw()[0] === "\"" || NS.getRaw()[0] === "\'"){
 				parsed = new ms.str(NS.getRaw().slice(1, -1));
@@ -270,33 +313,11 @@ var ms = {
 			logger.e('parseFunction');
 
 			while(NS.getRaw()){
-				if(NS.getRaw() === 'var'){
-					NS.nextRaw();
-					this.parseVar(NS);				//TODO
-				} else {
-					this.parseExpression(NS);
-				}
+				this.parseExpression(NS);
 				NS.nextRaw();
 			}
 			logger.x('parseFunction');
 		},
-		parseVar: function(NS){
-			logger.e('parseVar');
-			logger.l('parsing Var name', NS.getRaw());
-			/*var msVar = new ms.undef(NS.getRaw());
-
-			if(NS.msvarExists(msVar.name)){								//TODO: redo with NS.getMemberByName()
-				NS.replaceMsvar(NS.msvarExists(msVar.name), msVar);
-				logger.l("msVarExists - replacing");
-			} else {
-				NS.addMsvar(msVar);
-				logger.l("msVarExists NOT - adding", msVar);
-			}*/
-			NS.nextRaw();
-
-			logger.l('NEXT', NS.getRaw());
-			logger.x('parseVar');
-		}
 	},
 //////////////////////////////////////////////////////////////////////////////////////////////////////////   BULLSHIT
 	gridMan: {
@@ -338,13 +359,19 @@ var ms = {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////   STAGE 3
 	simulator: {
 		msGlobal: undefined,
+		stack: [],
 		step:function () {
 			logger.e('step');
 			if(!this.msGlobal){
 				this.msGlobal = ms.parser.parse();
 				this.msGlobal.pointer = 0;
+				this.stack.push(this.msGlobal);
 			}
-			var NS = this.msGlobal;
+			NS = this.stack[this.stack.length-1];
+			while(!NS.getStatement()){
+				stack.pop();
+			}
+
 			this.execute(NS);
 			NS.nextStatement();
 			logger.x('step');
@@ -368,6 +395,11 @@ var ms = {
 				logger.l('RO',rightOperand);
 
 				leftOperand[leftName] = rightOperand;
+			} else if (typeof NS.getStatement(1) === "array" && typeof NS.getStatement(2)!== 'array'){
+				if(NS.getStatement(2) !== 'array'){
+					logger.l('we\'ve got a function - pushing on stack');
+					this.stack.push(NS.getStatement());
+				}
 			}
 			logger.x('execute');
 		},
@@ -596,7 +628,7 @@ ms.fun = function(name, args, rawCode){
 	};
 	logger.l('done');				//are those really object?
 };
-ms.arr = function(value){
+ms.arr = function(){
 	this.members = [];
 	this.primitiveType = "Array";
 	this.rawCode = [];

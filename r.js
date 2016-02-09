@@ -13,7 +13,7 @@ r.TrisA = {
 	},
 	get: function(){
 		logger.l('get');
-		return this.values	//state of tris is always known
+		return this.values;	//state of tris is always known
 	}
 };
 
