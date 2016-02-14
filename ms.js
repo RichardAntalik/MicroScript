@@ -165,8 +165,10 @@ var ms = {
 					pack.path.push(code[pointer]);				//default action
 					pack.path.push(code[pointer+1])
 					if (code[pointer+2] instanceof Array){		//is this index of identifier?
-						pack.path.push(code[pointer+2]);
-						rem[1] = 3;
+						if (!(code[pointer+2][0] === '(' && code[pointer+3] !== '.')) {		//NEGATION
+							pack.path.push(code[pointer + 2]);								//don't incl () if last item
+							rem[1] = 3;
+						}
 					}
 					code[pointer-rem[0]-1] = pack;				//save pack to ident start
 					logger.l('test',code[pointer+rem[1]]);
