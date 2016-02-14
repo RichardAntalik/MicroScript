@@ -1,3 +1,5 @@
+/*globals console, editor, $*/
+/*jslint browser:true, white: true, vars: true */
 var ms = {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////   STAGE 1
 	preprocessor: {
@@ -6,7 +8,7 @@ var ms = {
 		crush: function(code){
 			logger.e('crush');
 		    logger.l('code:', code);
-		    var crushRE = /(\\|\.|\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|===|==|=|!=|!==|<<|<|>>>|>>|>|<=|>=|\?|:|,|'|"|;|\(|\)|\[|\]|\{|\}|\&|\||\^|\~|var|function|new|class|const|delete|else|export|extends|import|in|instanceof|return|throw|typeof|void|yield|of)/gm;
+		    var crushRE = /(\\|\.|\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|===|==|=|!=|!==|<<|<|>>>|>>|>|<=|>=|\?|:|,|'|"|;|\(|\)|\[|]|\{|}|&|\||\^|~|var|function|new|class|const|delete|else|export|extends|import|in|instanceof|return|throw|typeof|void|yield|of)/gm;
 
 		    var crushed = code.split(crushRE);
 		    logger.l("crushed:",crushed);
@@ -157,13 +159,13 @@ var ms = {
 					} else {
 						pack = new ms.identifier();
 						if (code[pointer-1] instanceof Array){		//is this index of identifier?
-							pack.path.push(code[pointer-2]);
+							pack.rawCode.push(code[pointer-2]);
 							rem[0] = 1;
 						}
-						pack.path.push(code[pointer-1]);
+						pack.rawCode.push(code[pointer-1]);
 					}
-					pack.path.push(code[pointer]);				//default action
-					pack.path.push(code[pointer+1])
+					pack.rawCode.push(code[pointer]);				//default action
+					pack.rawCode.push(code[pointer+1]);
 					if (code[pointer+2] instanceof Array){		//is this index of identifier?
 						if (!(code[pointer+2][0] === '(' && code[pointer+3] !== '.')) {		//NEGATION
 							pack.path.push(code[pointer + 2]);								//don't incl () if last item
@@ -172,7 +174,7 @@ var ms = {
 					}
 					code[pointer-rem[0]-1] = pack;				//save pack to ident start
 					logger.l('test',code[pointer+rem[1]]);
-					var spl = code.splice(pointer-rem[0], rem[0]+rem[1]);
+					code.splice(pointer-rem[0], rem[0]+rem[1]);
 					pointer = pointer - rem[0] - 1;
 				} else if (code[pointer] instanceof Array){
 					this.packIdentifiers(code[pointer]);
@@ -191,8 +193,8 @@ var ms = {
 			logger.l('vars splited.', this.code);
 			this.code = this.packObjects();
 			logger.l("Objects Packed.", this.code);
-			this.packIdentifiers(this.code);
-			logger.l("Identifiers Packed.", this.code);
+//			this.packIdentifiers(this.code);
+//			logger.l("Identifiers Packed.", this.code);
 			this.pointer = 0;
 			logger.x('preprocess');
 			return this.code;
@@ -207,56 +209,24 @@ var ms = {
 			this.parseFunction(this.msGlobal);		//PASS 1 - translate object literals
 			logger.l('parsed:', this.msGlobal);
 			this.msGlobal.pointer = 0;
-			//this.packStatements(this.msGlobal);
-			//logger.l('parsed:', this.msGlobal);
 			console.timeEnd("preprocess");
 			console.timeEnd("parse");
 			logger.x('parse');
 			return this.msGlobal;
 		},
-	/*	packObjectMemberFunctionStatements:function(NS){ //naming this fn took about 15 minutes
-			logger.e();
-			logger.l('packing in',NS);
-			for(var member in NS.members){
-				if (!NS.members.hasOwnProperty(member)) {
-					logger.l('NS do not have property',NS.members, member);
-					continue;
-				}
-				logger.l('iterating over', NS.members[member]);
-				if(NS.members[member]instanceof ms.fun){
-					this.packStatements(NS.members[member]);
-				} else if (NS.members[member]instanceof ms.obj || NS.members[member] instanceof ms.arr){
-					this.packObjectMemberFunctionStatements(NS.members[member]);
-				}
-			}
-			logger.x();
+		isOperator: function(code){
+			logger.e('isOperator');
+			var operators = /(\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|=|<<|<|>>>|>>|>|<=|>=|&|\||\^|~)/gm;
+			var ret = operators.test(code);
+			logger.x('isOperator',ret);
+			return ret;
 		},
-		packStatements:function(NS){
-			logger.e();
-			logger.l('packing in', NS);
-			var packedStatements = [];
-			var pack = [];
-			while (NS.getStatement()){
-				pack.push(NS.getStatement());
-				if(NS.getStatement() === ';'){
-					packedStatements.push(pack);
-					pack = [];
-				} else if (NS.getStatement() instanceof ms.fun){
-					this.packStatements(NS.getStatement());
-				} else if (NS.getStatement() instanceof ms.obj || NS.getStatement() instanceof ms.arr){
-					logger.l('got object to pack', NS.getStatement());
-					this.packObjectMemberFunctionStatements(NS.getStatement());
-				}
-				NS.nextStatement();
-			}
-			NS.statements = packedStatements;
-			logger.x();
-		},*/
 		parseExpression:function (NS, memberName) {
 			logger.e('parseExpression');
 			var numRE = /^\s*(-?[0-9]*([.]?[0-9]+))(((e|E)(-|\+)?)[0-9]+)?\s*$/;
 			var parsed;
 			var msfun;
+			var group;
 			logger.l('parsing:', NS.getRaw());
 					//											===========[  FUNCTION  ]===========
 			if(NS.getRaw() ==='function'){
@@ -282,7 +252,7 @@ var ms = {
 				this.parseObject(msObj);
 				parsed = msObj;
 						//											===========[  ARRAY  ]===========
-			} else if(NS.getRaw() instanceof Array && NS.getRaw()[0] === '['){
+			} else if(NS.getRaw() instanceof Array && NS.getRaw()[0] === '[' && !(NS.statements[NS.statements.length-1] instanceof ms.identifier)){
 				var msArr = new ms.arr();
 				msArr.rawCode = NS.getRaw();
 				msArr.rawCode.shift();		//remove [...]
@@ -301,25 +271,25 @@ var ms = {
 						//											===========[  STRING  ]===========
 			} else if(NS.getRaw()[0] === "\"" || NS.getRaw()[0] === "\'"){
 				parsed = new ms.str(NS.getRaw().slice(1, -1));
-						//											===========[  KEYWORDS  ]===========
-						//TODO: CASE statement
+						//											===========[  IF FOR WHILE  ]===========
 			}else if(NS.getRaw() === 'for' || NS.getRaw() === 'if' || NS.getRaw() === 'while'){
 				parsed = [];
 				parsed.push(NS.getRaw());	//push in KW
-				var group = new ms.group(NS.getRaw(+1));	//parse ()
+				group = new ms.group(NS.getRaw(+1));	//parse ()
 				this.parseGroup(group);
 				parsed.push(group);
 				group = new ms.group(NS.getRaw(+2));		//parse {}
 				this.parseGroup(group);
 				parsed.push(group);
 				NS.nextRaw(2);
+						//											===========[  ELSE  ]===========
 			} else if (NS.getRaw() === 'else'){
 				var prevCond = NS.statements[NS.statements.length-1];
 				logger.l(NS.statements);
 				prevCond.push(NS.getRaw());
 				if (NS.getRaw(+1) === 'if'){
 					prevCond.push(NS.getRaw(+1));	//push in if
-					var group = new ms.group(NS.getRaw(+2));	//parse ()
+					group = new ms.group(NS.getRaw(+2));	//parse ()
 					this.parseGroup(group);
 					prevCond.push(group);
 					group = new ms.group(NS.getRaw(+3));		//parse {}
@@ -327,39 +297,72 @@ var ms = {
 					prevCond.push(group);
 					NS.nextRaw(3);
 				} else {
-					var group = new ms.group(NS.getRaw(+1));	//parse ()
+					group = new ms.group(NS.getRaw(+1));	//parse ()
 					this.parseGroup(group);
 					prevCond.push(group);
 					NS.nextRaw(1);
 				}
+						//											===========[  DO  ]===========
 			} else if (NS.getRaw() === 'do'){
 				parsed = [];
 				parsed.push(NS.getRaw());	//do kw
-				var group = new ms.group(NS.getRaw(+1));	//parse {}
+				group = new ms.group(NS.getRaw(+1));	//parse {}
 				this.parseGroup(group);
 				parsed.push(group);
-				parsed.push(NS.getRaw(2))					//while kw
+				parsed.push(NS.getRaw(2));					//while kw
 				group = new ms.group(NS.getRaw(+3));		//parse ()
 				this.parseGroup(group);
 				parsed.push(group);
 				NS.nextRaw(3);
-				//											===========[  OPERATORS  ]===========*/
-/*			} else if (NS.getRaw() === '='){
-				parsed = [];
-				parsed.push(NS.getRaw());
-				NS.nextRaw();
-				this.parseExpression(NS);			//parse 1 step forward
-				parsed.push(NS.statements[NS.statements.length-2]);		//move statements to operation
-				parsed.push(NS.statements[NS.statements.length-1]);*/
-			} else if (NS.getRaw() === ''){
-			} else if (NS.getRaw() === ''){
-
-			} else {
+						//											===========[  VAR  ]===========
+			} else if (NS.getRaw() === '('){
+			} else if (NS.getRaw() === ')'){
+			} else if (NS.getRaw() === '.'){
+			} else if (NS.getRaw() === 'var'){
+				//do nothing
+						//											===========[  CALL  ]===========
+			} else if (NS.getRaw() instanceof Array && NS.getRaw()[0] === "(" && !this.isOperator(NS.getRaw(-1))){
+				logger.l('parsing CALL');
+				var call = [];
+				call.push('call');
+				call.push(NS.statements[NS.statements.length-1]);
+				group = new ms.group(NS.getRaw());
+				logger.l('passing arguments', NS.getRaw());
+				this.parseGroup(group);
+				call.push(group);
+				NS.statements[NS.statements.length-1] = call;
+						//											===========[  EOS  ]===========
+			} else if (NS.getRaw() === ';'){
+				logger.l('parsing EOS');
 				parsed = NS.getRaw();
+						//											===========[  IDENTIFIER  INDEX]===========
+			} else if(NS.getRaw() instanceof Array && NS.getRaw()[0] === '[' && (NS.statements[NS.statements.length-1] instanceof ms.identifier)){
+				logger.l('parsing ID INDEX');
+				var identifier = NS.statements[NS.statements.length-1];
+				var path = identifier.path[identifier.path.length-1];
+				path.push(NS.getRaw()[1]);		//TODO:parse indexes as group`
+						//											===========[  IDENTIFIER  ]===========
+			} else {
+				logger.l('parsing ID');
+
+				if(NS.getRaw(-1) === '.' && NS.statements[NS.statements.length - 1] instanceof ms.identifier) {//existID
+					var identifier = NS.statements[NS.statements.length - 1];
+					logger.l(identifier);
+					identifier.path.push([NS.getRaw()]);
+				} else if(NS.getRaw(-1) === '.'){											//access to ret val member
+					var id = new ms.identifier();
+					id.path.push(NS.statements[NS.statements.length - 1])
+					id.path.push([NS.getRaw()]);
+					NS.statements[NS.statements.length - 1] = id;
+		} else {																			//new id
+					var id = new ms.identifier();
+					id.path.push([NS.getRaw()]);
+					parsed = id;
+				}
 			}
-			logger.l(parsed, memberName, NS.primitiveType );
+			logger.l('parsed:', parsed);
 			if(parsed){		//not empty
-				if(NS.primitiveType === 'Group'){
+				if(NS.primitiveType === 'Group' || NS.primitiveType === 'Identifier' ){
 					NS.addStatement(parsed);
 				} else if(NS.primitiveType === 'Function'){
 					NS.addStatement(parsed);
@@ -386,15 +389,16 @@ var ms = {
 			while(NS.getRaw()){
 				logger.l('processing:', NS.getRaw());
 				var memberName = NS.getRaw();
-
-				NS.nextRaw();		//:
-				NS.nextRaw();		//val				//TODO: read until , or end
-
-				this.parseExpression(NS, memberName);
-
-				//NS.members[NS.members.length - 1].name = memberName;
-				NS.members[memberName].name = memberName;
-				while(NS.getRaw() !== ',' && NS.getRaw()){NS.nextRaw();}
+				NS.nextRaw();
+				NS.nextRaw();
+				var group = new ms.group();
+				while (NS.getRaw() && NS.getRaw() !== ','){
+					logger.l('adding to group:', NS.getRaw());
+					group.rawCode.push(NS.getRaw());
+					NS.nextRaw();
+				}
+				this.parseGroup(group);
+				NS.members[memberName] = group;
 				NS.nextRaw();
 			}
 
@@ -403,10 +407,15 @@ var ms = {
 		parseArray: function(NS){
 			logger.e('parseArray');
 			while(NS.getRaw()){
-				logger.l('processing:', NS.getRaw());
-				this.parseExpression(NS);
-				
-				NS.nextRaw();
+				var group = new ms.group();
+				while (NS.getRaw() && NS.getRaw() !== ','){
+					logger.l('adding to group:', NS.getRaw());
+					group.rawCode.push(NS.getRaw());
+					NS.nextRaw();
+				}
+
+				this.parseGroup(group);
+				NS.members.push(group);
 				NS.nextRaw();
 			}
 
@@ -420,7 +429,7 @@ var ms = {
 				NS.nextRaw();
 			}
 			logger.x('parseFunction');
-		},
+		}
 	},
 //////////////////////////////////////////////////////////////////////////////////////////////////////////   BULLSHIT
 	gridMan: {
@@ -441,7 +450,7 @@ var ms = {
 				return $('<div />').css(cssProps);
 			};
 			this.render = function(outputEl){
-				outputEl.append(this.el);
+				outputEl.append(this.el, null);
 			};
 
 			this.el = this.createCellElement();
@@ -463,7 +472,7 @@ var ms = {
 	simulator: {
 		msGlobal: undefined,
 		stack: [],
-		step:function () {
+		step:function (NS) {
 			logger.e('step');
 			if(!this.msGlobal){
 				this.msGlobal = ms.parser.parse();
@@ -472,7 +481,7 @@ var ms = {
 			}
 			NS = this.stack[this.stack.length-1];
 			while(!NS.getStatement()){
-				stack.pop();
+				this.stack.pop();
 			}
 
 			this.execute(NS);
@@ -498,7 +507,7 @@ var ms = {
 				logger.l('RO',rightOperand);
 
 				leftOperand[leftName] = rightOperand;
-			} else if (typeof NS.getStatement(1) === "array" && typeof NS.getStatement(2)!== 'array'){
+			} else if (NS.getStatement(1) instanceof Array && !(NS.getStatement(2) instanceof Array)){
 				if(NS.getStatement(2) !== 'array'){
 					logger.l('we\'ve got a function - pushing on stack');
 					this.stack.push(NS.getStatement());
@@ -639,13 +648,6 @@ var ms = {
 			logger.x('isKeyword', ret);
 			return ret;
 		},
-		isOperator: function(code){
-			logger.e('isOperator');
-	    	var operators = /(\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|=|<<|<|>>>|>>|>|<=|>=|&|\||\^|~)/gm;
-			var ret = operators.test(code);
-	    	logger.x('isOperator',ret);
-			return ret;
-		},
 		isExpression: function(code){
 			logger.l('isExpression', !this.isKeyword(code));
 			return !this.isKeyword(code);
@@ -675,41 +677,14 @@ ms.fun = function(name, args, rawCode){
 	this.pointer = 0;
 	this.statements = [];
 	this.statementPointer = 0;
-	
 	this.members = [];
-	//this.members['__parent__'] = this;
 	this.primitiveType = "Function";
 	this.msvars = [];
-	this.args = args;
 	this.name = name;
-
-	this.getMemberByName = function(name){
-		logger.l('testing if var',name, 'is in', this);
-		for (var member of this.members){
-			if(member.name === name)return member;
-		}
-		return false;
-	};
-
 	this.addStatement = function(statement){
 		this.statements.push(statement);
 	};
-	this.addMsvar = function(msvar){
-		this.msvars.push(msvar);
-	};
-	this.msvarExists = function(name){
-		l.l('testing if var',name, 'is in', this);
-		for (var msvar of this.msvars){
-			if(msvar.name === name)return msvar;
-		}
-		return false;
-	};
-	/*this.setVarByName = function (name, replacing) {
-		for (var i = 0; i < this.msVars.length; i++){
-//				if()			
-		}
-		return false;
-	}*/
+
 	this.getVarByName = function(name){
 		return this.msvars[name];
 	};
@@ -733,6 +708,10 @@ ms.fun = function(name, args, rawCode){
 };
 ms.group = function(rawCode){
 	logger.e();
+	logger.l('RAW:', rawCode);
+	if (!rawCode){
+		rawCode = [];
+	}
 	this.rawCode = rawCode;
 	this.pointer = 0;
 	this.statements = [];
@@ -757,7 +736,10 @@ ms.group = function(rawCode){
 		if(!amt) amt = 1;
 		this.statementPointer += amt;
 	};
-	logger.x();				//are those really object?
+	logger.x();
+};
+ms.identifier = function(){
+	this.path = [];
 };
 ms.arr = function(){
 	this.members = [];
@@ -794,6 +776,3 @@ ms.bool = function(value){
 	this.value = value;
 	this.primitiveType = "Boolean";
 };
-ms.identifier = function(){
-	this.path = [];
-}
