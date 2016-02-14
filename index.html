@@ -10,6 +10,22 @@
 <body>
 <div style="width: 100%; height: 450px;">
 <div id="editor" style="width:49%; height:99%; display:inline-block; float: left;">
+
+    xxx;
+    a.b.c.d;
+
+    a[1].b.c;
+
+    a().b.c;
+
+    if(a[1].b.c === 1){
+    somethng();
+    } else if (blah){
+    somethng.elz();
+    } else {
+    nothng();
+    }
+
     var a, b, c;
     function test(){
     var o2 = {
@@ -20,35 +36,25 @@
     test();
 
     t = {
-    parse: function (){
-    logger.e('parse');
-    this.msGlobal = new ms.fun('msGlobal', [], ms.preprocessor.preprocess());
-    this.parseFunction(this.msGlobal);		//PASS 1 - translate object literals
-    logger.l('parsed:', this.msGlobal);
-    NS.pointer = 0;							//PASS 2
-    this.packStatements(this.msGlobal);
-    logger.x('parse');
-    return this.msGlobal;
-    },
     packStatements:function(NS){
     logger.e();
     var packedStatements = [];
     var pack = [];
-    while (NS.getStatement()){
-    pack.push(NS.getStatement());
+
     if(NS.getStatement() === ';'){
     packedStatements.push(pack);
     pack = [];
     }
+
     if (NS.getStatement() instanceof ms.fun){
     this.packedStatements(NS.getStatement());
     }
-    }
+
     NS.statements = packedStatements;
     logger.x();
     },
-    }
-;
+    };
+
 </div>
     <div id="container" style="margin:0px; width:50%; height:100%;display:inline-block; float: right;">
 
@@ -66,10 +72,9 @@
 </script>
 
 <div id="toolbar" style="width:100%; height:50px; margin: 5px">
-    <input type="button" id="ms-translate" value="Translate"/>
-    <input type="button" id="ms-simulate" value="Simulate"/>
+    <input type="button" id="ms-s1" value="Stage 1"/>
+    <input type="button" id="ms-s2" value="Stage 2"/>
     <input type="button" id="ms-step" value="Step"/>
-    <input type="button" id="ms-parse" value="Parse"/>
 </div>
 <script src="log.js"></script>
 
@@ -96,11 +101,10 @@ ms.gridMan.createCells(15,15);
 $(document).on('click', '#ms-step', function () {
     ms.simulator.step();
 });
-$(document).on('click', '#ms-simulate', function () {
-    sim.simulateSelection();
+$(document).on('click', '#ms-s1', function () {
+    ms.preprocessor.preprocess();
 });
-$(document).on('click', '#ms-parse', function () {
-    console.log("fasasf");
+$(document).on('click', '#ms-s2', function () {
     ms.parser.parse();
 });
 </script>

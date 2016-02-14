@@ -6,7 +6,7 @@ var ms = {
 		crush: function(code){
 			logger.e('crush');
 		    logger.l('code:', code);
-		    var crushRE = /(\\|\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|===|==|=|!=|!==|<<|<|>>>|>>|>|<=|>=|\?|:|\.|,|'|"|;|\(|\)|\[|\]|\{|\}|\&|\||\^|\~|var|function|new|class|const|delete|else|export|extends|import|in|instanceof|return|throw|typeof|void|yield|of)/gm;
+		    var crushRE = /(\\|\.|\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|===|==|=|!=|!==|<<|<|>>>|>>|>|<=|>=|\?|:|,|'|"|;|\(|\)|\[|\]|\{|\}|\&|\||\^|\~|var|function|new|class|const|delete|else|export|extends|import|in|instanceof|return|throw|typeof|void|yield|of)/gm;
 
 		    var crushed = code.split(crushRE);
 		    logger.l("crushed:",crushed);
@@ -119,6 +119,7 @@ var ms = {
 			logger.x('splitVars');
 			return code;
 		},
+
 		packObjects: function (){
 			logger.e("packObjects");
 			var opening = /\{|\[|\(/;
@@ -132,7 +133,7 @@ var ms = {
 			this.pointer++;
 			do{
 				instr = this.code[this.pointer];
-				if (opening.test(instr)) {
+				if (typeof instr !== 'object' && opening.test(instr)) {
 					level++;
 					packed.push(this.packObjects());
 					this.pointer--;
@@ -140,14 +141,46 @@ var ms = {
 					packed.push(instr);
 				}
 				this.pointer++;
-			} while (!closing.test(instr) && instr);
+			} while ((!closing.test(instr) || typeof instr === 'object') && instr);
 
 			logger.x("packObjects");
 			return packed;
 		},
+		packIdentifiers:function(code){
+			var pointer = 0;
+			var pack;
+			while(code[pointer]){
+				if (code[pointer] === '.'){
+					var rem = [0,2];		//default range to splice
+					if (code[pointer-1] instanceof ms.identifier){
+						pack = code[pointer-1];
+					} else {
+						pack = new ms.identifier();
+						if (code[pointer-1] instanceof Array){		//is this index of identifier?
+							pack.path.push(code[pointer-2]);
+							rem[0] = 1;
+						}
+						pack.path.push(code[pointer-1]);
+					}
+					pack.path.push(code[pointer]);				//default action
+					pack.path.push(code[pointer+1])
+					if (code[pointer+2] instanceof Array){		//is this index of identifier?
+						pack.path.push(code[pointer+2]);
+						rem[1] = 3;
+					}
+					code[pointer-rem[0]-1] = pack;				//save pack to ident start
+					logger.l('test',code[pointer+rem[1]]);
+					var spl = code.splice(pointer-rem[0], rem[0]+rem[1]);
+					pointer = pointer - rem[0] - 1;
+				} else if (code[pointer] instanceof Array){
+					this.packIdentifiers(code[pointer]);
+				}
+				pointer++;
+			}
+		},
 		preprocess: function () {
 			logger.e('preprocess');
-
+			console.time("preprocess");
 			editor.session.selection.selectAll();
 			var code = editor.getCopyText();
 			this.code = this.crush(code);
@@ -156,8 +189,9 @@ var ms = {
 			logger.l('vars splited.', this.code);
 			this.code = this.packObjects();
 			logger.l("Objects Packed.", this.code);
+			this.packIdentifiers(this.code);
+			logger.l("Identifiers Packed.", this.code);
 			this.pointer = 0;
-
 			logger.x('preprocess');
 			return this.code;
 		}
@@ -166,16 +200,19 @@ var ms = {
 	parser: {
 		parse: function (){
 			logger.e('parse');
+			console.time("parse");
 			this.msGlobal = new ms.fun('msGlobal', [], ms.preprocessor.preprocess());
 			this.parseFunction(this.msGlobal);		//PASS 1 - translate object literals
 			logger.l('parsed:', this.msGlobal);
 			this.msGlobal.pointer = 0;
-			this.packStatements(this.msGlobal);
-			logger.l('parsed:', this.msGlobal);
+			//this.packStatements(this.msGlobal);
+			//logger.l('parsed:', this.msGlobal);
+			console.timeEnd("preprocess");
+			console.timeEnd("parse");
 			logger.x('parse');
 			return this.msGlobal;
 		},
-		packObjectMemberFunctionStatements:function(NS){ //naming this fn took about 15 minutes
+	/*	packObjectMemberFunctionStatements:function(NS){ //naming this fn took about 15 minutes
 			logger.e();
 			logger.l('packing in',NS);
 			for(var member in NS.members){
@@ -212,7 +249,7 @@ var ms = {
 			}
 			NS.statements = packedStatements;
 			logger.x();
-		},
+		},*/
 		parseExpression:function (NS, memberName) {
 			logger.e('parseExpression');
 			var numRE = /^\s*(-?[0-9]*([.]?[0-9]+))(((e|E)(-|\+)?)[0-9]+)?\s*$/;
@@ -256,26 +293,90 @@ var ms = {
 						//											===========[  NULL  ]===========
 			} else if((NS.getRaw() === 'null')){
 				parsed = new ms.null();
-						//											===========[  NUMBER  ]=========== //TODO splitter produces bad numbers
+						//											===========[  NUMBER  ]===========
 			} else if(numRE.test(NS.getRaw()[0])){
-					parsed = new ms.num(Number(NS.getRaw()));
+				parsed = new ms.num(Number(NS.getRaw()));
 						//											===========[  STRING  ]===========
 			} else if(NS.getRaw()[0] === "\"" || NS.getRaw()[0] === "\'"){
 				parsed = new ms.str(NS.getRaw().slice(1, -1));
-						//											===========[  EXPRESSION  ]===========
+						//											===========[  KEYWORDS  ]===========
+						//TODO: CASE statement
+			}else if(NS.getRaw() === 'for' || NS.getRaw() === 'if' || NS.getRaw() === 'while'){
+				parsed = [];
+				parsed.push(NS.getRaw());	//push in KW
+				var group = new ms.group(NS.getRaw(+1));	//parse ()
+				this.parseGroup(group);
+				parsed.push(group);
+				group = new ms.group(NS.getRaw(+2));		//parse {}
+				this.parseGroup(group);
+				parsed.push(group);
+				NS.nextRaw(2);
+			} else if (NS.getRaw() === 'else'){
+				var prevCond = NS.statements[NS.statements.length-1];
+				logger.l(NS.statements);
+				prevCond.push(NS.getRaw());
+				if (NS.getRaw(+1) === 'if'){
+					prevCond.push(NS.getRaw(+1));	//push in if
+					var group = new ms.group(NS.getRaw(+2));	//parse ()
+					this.parseGroup(group);
+					prevCond.push(group);
+					group = new ms.group(NS.getRaw(+3));		//parse {}
+					this.parseGroup(group);
+					prevCond.push(group);
+					NS.nextRaw(3);
+				} else {
+					var group = new ms.group(NS.getRaw(+1));	//parse ()
+					this.parseGroup(group);
+					prevCond.push(group);
+					NS.nextRaw(1);
+				}
+			} else if (NS.getRaw() === 'do'){
+				parsed = [];
+				parsed.push(NS.getRaw());	//do kw
+				var group = new ms.group(NS.getRaw(+1));	//parse {}
+				this.parseGroup(group);
+				parsed.push(group);
+				parsed.push(NS.getRaw(2))					//while kw
+				group = new ms.group(NS.getRaw(+3));		//parse ()
+				this.parseGroup(group);
+				parsed.push(group);
+				NS.nextRaw(3);
+				//											===========[  OPERATORS  ]===========*/
+/*			} else if (NS.getRaw() === '='){
+				parsed = [];
+				parsed.push(NS.getRaw());
+				NS.nextRaw();
+				this.parseExpression(NS);			//parse 1 step forward
+				parsed.push(NS.statements[NS.statements.length-2]);		//move statements to operation
+				parsed.push(NS.statements[NS.statements.length-1]);*/
+			} else if (NS.getRaw() === ''){
+			} else if (NS.getRaw() === ''){
+
 			} else {
 				parsed = NS.getRaw();
 			}
-			if(parsed){
-				if(NS.primitiveType === 'Function'){
+			logger.l(parsed, memberName, NS.primitiveType );
+			if(parsed){		//not empty
+				if(NS.primitiveType === 'Group'){
+					NS.addStatement(parsed);
+				} else if(NS.primitiveType === 'Function'){
 					NS.addStatement(parsed);
 				} else if(NS.primitiveType === 'Object'){
+					logger.l('adding member');
 					NS.members[memberName] = parsed;
 				} else if(NS.primitiveType === 'Array'){
 					NS.members.push(parsed);
 				}
 			}
 			logger.x('parseExpression');
+		},
+		parseGroup:function(NS){
+			logger.e();
+			while(NS.getRaw()){
+				this.parseExpression(NS);
+				NS.nextRaw();
+			}
+			logger.x();
 		},
 		parseObject: function(NS){
 			logger.e('parseObject');
@@ -285,7 +386,7 @@ var ms = {
 				var memberName = NS.getRaw();
 
 				NS.nextRaw();		//:
-				NS.nextRaw();		//val
+				NS.nextRaw();		//val				//TODO: read until , or end
 
 				this.parseExpression(NS, memberName);
 
@@ -628,6 +729,34 @@ ms.fun = function(name, args, rawCode){
 	};
 	logger.l('done');				//are those really object?
 };
+ms.group = function(rawCode){
+	logger.e();
+	this.rawCode = rawCode;
+	this.pointer = 0;
+	this.statements = [];
+	this.statementPointer = 0;
+	this.primitiveType = "Group";
+	this.addStatement = function(statement){
+		this.statements.push(statement);
+	};
+	this.getRaw = function(offset){
+		if(!offset) offset = 0;
+		return this.rawCode[this.pointer + offset];
+	};
+	this.nextRaw = function(amt){ //def 1
+		if(!amt) amt = 1;
+		this.pointer += amt;
+	};
+	this.getStatement = function(offset){
+		if(!offset) offset = 0;
+		return this.statements[this.statementPointer + offset];
+	};
+	this.nextStatement = function(amt){ //def 1
+		if(!amt) amt = 1;
+		this.statementPointer += amt;
+	};
+	logger.x();				//are those really object?
+};
 ms.arr = function(){
 	this.members = [];
 	this.primitiveType = "Array";
@@ -663,3 +792,6 @@ ms.bool = function(value){
 	this.value = value;
 	this.primitiveType = "Boolean";
 };
+ms.identifier = function(){
+	this.path = [];
+}
