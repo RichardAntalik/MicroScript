@@ -208,15 +208,51 @@ var ms = {
 			this.msGlobal = new ms.fun('msGlobal', [], ms.preprocessor.preprocess());
 			this.parseFunction(this.msGlobal);		//PASS 1 - translate object literals
 			logger.l('parsed:', this.msGlobal);
+			this.parseOperators(this.msGlobal.statements);
+			logger.l('parsed:', this.msGlobal);
 			this.msGlobal.pointer = 0;
 			console.timeEnd("preprocess");
 			console.timeEnd("parse");
 			logger.x('parse');
 			return this.msGlobal;
 		},
+		parseOperators:function(statements){
+			for (var statement of statements) {
+				if (statement instanceof ms.arr || statement instanceof ms.obj) {
+					// recurse to EACH member statements
+				} else if (statement instanceof ms.fun) {
+					// recurse to statements
+				} else if (statement instanceof ms.identifier) {
+					//recurse to EACH identifier. EACH path
+				} else if (statement instanceof Array && statement[0] === 'call') {
+					//recurse to identifier
+					//recurse to arguments statements
+				} else if (statement instanceof Array) {	//loops + cond.
+					//recurse to statements
+					//recurse to loop body statements
+				}
+			}
+			this.parseOperatorsInStatements(statements);
+		},
+		parseOperatorsInStatements:function(statements){
+			var operators = ['++','--','!','~','**','*','/','%','+','-','<<','>>','>>>','<','>','<=','>=','==','!=',
+				'===','!==','='];
+			for(var operator of operators) {
+				var pos = statements.indexOf(operator);
+//				var group = new ms.group();
+				if (pos >= 0){
+					logger.l('got', statements[pos], '@', pos);
+					logger.l(statements[pos-1], statements[pos], statements[pos+1]);
+				}
+/*				group.statements.push(statements[pos - 1]);
+				group.statements.push(statements[pos]);
+				group.statements.push(statements[pos + 1]);
+				logger.l(group);*/
+			}
+		},
 		isOperator: function(code){
 			logger.e('isOperator');
-			var operators = /(\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|=|<<|<|>>>|>>|>|<=|>=|&|\||\^|~)/gm;
+			var operators = /(\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|=|<<|<|>>>|>>|>|<=|>=|&|\||\^|~|=|==|===)/gm;
 			var ret = operators.test(code);
 			logger.x('isOperator',ret);
 			return ret;
@@ -322,43 +358,22 @@ var ms = {
 				//do nothing
 						//											===========[  CALL  ]===========
 			} else if (NS.getRaw() instanceof Array && NS.getRaw()[0] === "(" && !this.isOperator(NS.getRaw(-1))){
-				logger.l('parsing CALL');
-				var call = [];
-				call.push('call');
-				call.push(NS.statements[NS.statements.length-1]);
-				group = new ms.group(NS.getRaw());
-				logger.l('passing arguments', NS.getRaw());
-				this.parseGroup(group);
-				call.push(group);
-				NS.statements[NS.statements.length-1] = call;
+				this.parseCall(NS);
+						//											===========[  GROUP  ]===========
+			} else if (NS.getRaw() instanceof Array && NS.getRaw()[0] === "("){
+				parsed = new ms.group(NS.getRaw());
+				this.parseGroup(parsed);
 						//											===========[  EOS  ]===========
+			} else if (this.isOperator(NS.getRaw())){
+				parsed = NS.getRaw();
 			} else if (NS.getRaw() === ';'){
-				logger.l('parsing EOS');
 				parsed = NS.getRaw();
 						//											===========[  IDENTIFIER  INDEX]===========
 			} else if(NS.getRaw() instanceof Array && NS.getRaw()[0] === '[' && (NS.statements[NS.statements.length-1] instanceof ms.identifier)){
-				logger.l('parsing ID INDEX');
-				var identifier = NS.statements[NS.statements.length-1];
-				var path = identifier.path[identifier.path.length-1];
-				path.push(NS.getRaw()[1]);		//TODO:parse indexes as group`
+				this.parseIdentifierIndex(NS);
 						//											===========[  IDENTIFIER  ]===========
 			} else {
-				logger.l('parsing ID');
-
-				if(NS.getRaw(-1) === '.' && NS.statements[NS.statements.length - 1] instanceof ms.identifier) {//existID
-					var identifier = NS.statements[NS.statements.length - 1];
-					logger.l(identifier);
-					identifier.path.push([NS.getRaw()]);
-				} else if(NS.getRaw(-1) === '.'){											//access to ret val member
-					var id = new ms.identifier();
-					id.path.push(NS.statements[NS.statements.length - 1])
-					id.path.push([NS.getRaw()]);
-					NS.statements[NS.statements.length - 1] = id;
-		} else {																			//new id
-					var id = new ms.identifier();
-					id.path.push([NS.getRaw()]);
-					parsed = id;
-				}
+				parsed =  this.parseIdentifier(NS);
 			}
 			logger.l('parsed:', parsed);
 			if(parsed){		//not empty
@@ -374,6 +389,38 @@ var ms = {
 				}
 			}
 			logger.x('parseExpression');
+		},
+		parseIdentifier:function(NS){
+			var id;
+			if(NS.getRaw(-1) === '.' && NS.statements[NS.statements.length - 1] instanceof ms.identifier) {//existID
+				id = NS.statements[NS.statements.length - 1];
+				id.path.push([NS.getRaw()]);
+			} else if(NS.getRaw(-1) === '.'){											//access to ret val member
+				id = new ms.identifier();
+				id.path.push(NS.statements[NS.statements.length - 1]);
+				id.path.push([NS.getRaw()]);
+				NS.statements[NS.statements.length - 1] = id;
+			} else {																			//new id
+				id = new ms.identifier();
+				id.path.push([NS.getRaw()]);
+				return id;
+			}
+		},
+		parseIdentifierIndex:function(NS){
+			var id = NS.statements[NS.statements.length-1];
+			var path = id.path[id.path.length-1];
+			path.push(NS.getRaw()[1]);		//TODO:parse indexes as group`
+		},
+		parseCall:function(NS){
+			var call = [];
+			var group;
+			call.push('call');
+			call.push(NS.statements[NS.statements.length-1]);
+			group = new ms.group(NS.getRaw());
+			logger.l('passing arguments', NS.getRaw());
+			this.parseGroup(group);
+			call.push(group);
+			NS.statements[NS.statements.length-1] = call;
 		},
 		parseGroup:function(NS){
 			logger.e();
