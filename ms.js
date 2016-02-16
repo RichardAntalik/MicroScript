@@ -216,45 +216,96 @@ var ms = {
 			logger.x('parse');
 			return this.msGlobal;
 		},
-		parseOperators:function(statements){
+		parseOperators:function(statements){				///UMAD???
+			logger.e();
 			for (var statement of statements) {
+				logger.l('got', statement);
 				if (statement instanceof ms.arr || statement instanceof ms.obj) {
-					// recurse to EACH member statements
-				} else if (statement instanceof ms.fun) {
-					// recurse to statements
+					logger.l('parse ms.obj or ms.arr');
+					for (var member in statement.members){
+						if(statement.members.hasOwnProperty(member)){
+							logger.l('>>>', member, statement.members, statement.members[member]);
+							this.parseOperators(statement.members[member].statements);
+						}
+					}
+				} else if (statement instanceof ms.fun || statement instanceof ms.group) {
+                    logger.l('parse ms.group or ms.fun');
+					this.parseOperators(statement.statements);
 				} else if (statement instanceof ms.identifier) {
-					//recurse to EACH identifier. EACH path
+                    logger.l('parse ms.identifier');
+					logger.l(statement);
+					for (var id of statement.path){
+						logger.l('ok', id);
+						if (id[0] === 'call'){		//TODO: this mean that call is reserved word, which isn't!!!
+							logger.l('this is call');
+							this.parseOperators(id); //recurse to id
+						} else if (id.length > 1){		//there is index, thus statements
+							for (var index = 1; index <= id.length-1;index++){
+								logger.l(id[index]);
+								if (id[index].statements.length > 1){	//there is good chance of operator
+									this.parseOperators(id[index].statements);
+								}
+							}
+						}
+					}
 				} else if (statement instanceof Array && statement[0] === 'call') {
-					//recurse to identifier
-					//recurse to arguments statements
+                    logger.l('parse call');
+					logger.l(statement);
+					for (var id of statement[1].path){
+						logger.l('ok', id);
+						if (id[0] === 'call'){		//TODO: this mean that call is reserved word, which isn't!!!
+							logger.l('this is call');
+							this.parseOperators(id); //recurse to id
+						} else if (id.length > 1){		//there is index, thus statements
+							for (var index = 1; index <= id.length-1;index++){
+								logger.l(id[index]);
+								if (id[index].statements.length > 1){	//there is good chance of operator
+									this.parseOperators(id[index].statements);
+								}
+							}
+						}
+					}
+					this.parseOperators(statement[2].statements);
 				} else if (statement instanceof Array) {	//loops + cond.
-					//recurse to statements
-					//recurse to loop body statements
+                    logger.l('parse loop/cond');
+					this.parseOperators(statement[1].statements);
+					this.parseOperators(statement[2].statements);
 				}
 			}
 			this.parseOperatorsInStatements(statements);
+			logger.x();
 		},
 		parseOperatorsInStatements:function(statements){
+            logger.e();
 			var operators = ['++','--','!','~','**','*','/','%','+','-','<<','>>','>>>','<','>','<=','>=','==','!=',
 				'===','!==','='];
 			for(var operator of operators) {
 				var pos = statements.indexOf(operator);
-//				var group = new ms.group();
-				if (pos >= 0){
-					logger.l('got', statements[pos], '@', pos);
+				while (pos >= 0){
+                    var group = new ms.group();
+                    logger.l('got', statements[pos], '@', pos);
 					logger.l(statements[pos-1], statements[pos], statements[pos+1]);
-				}
-/*				group.statements.push(statements[pos - 1]);
-				group.statements.push(statements[pos]);
-				group.statements.push(statements[pos + 1]);
-				logger.l(group);*/
-			}
+                    group.statements.push(statements[pos - 1]);
+                    group.statements.push(statements[pos]);
+                    group.statements.push(statements[pos + 1]);
+                    logger.l('creating group', group);
+                    statements[pos - 1] = group;
+                    statements.splice(pos, 2);
+                    pos = pos - 2;
+                    pos = statements.indexOf(operator, pos+1);
+                }
+                logger.x();
+            }
 		},
 		isOperator: function(code){
 			logger.e('isOperator');
 			var operators = /(\+\+|\+=|\+|--|-=|-|\*=|\*|\/=|\/|%=|%|=|<<|<|>>>|>>|>|<=|>=|&|\||\^|~|=|==|===)/gm;
-			var ret = operators.test(code);
-			logger.x('isOperator',ret);
+			if (typeof code !== "object"){
+				var ret = operators.test(code);
+			} else {
+				ret = false;
+			}
+            logger.x();
 			return ret;
 		},
 		parseExpression:function (NS, memberName) {
@@ -266,6 +317,7 @@ var ms = {
 			logger.l('parsing:', NS.getRaw());
 					//											===========[  FUNCTION  ]===========
 			if(NS.getRaw() ==='function'){
+				logger.l('function');
 				if(NS.getRaw(1) instanceof Array){
 					msfun = new ms.fun("", NS.getRaw(1), NS.getRaw(2));		//anonymous
 					NS.nextRaw(2);
@@ -282,6 +334,7 @@ var ms = {
 				parsed = msfun;
 						//											===========[  OBJECT  ]===========
 			} else if (NS.getRaw() instanceof Array && NS.getRaw()[0] === '{'){
+				logger.l('object');
 				var msObj = new ms.obj(NS.getRaw());
 				msObj.rawCode.shift();		//remove {...}
 				msObj.rawCode.pop();
@@ -289,6 +342,8 @@ var ms = {
 				parsed = msObj;
 						//											===========[  ARRAY  ]===========
 			} else if(NS.getRaw() instanceof Array && NS.getRaw()[0] === '[' && !(NS.statements[NS.statements.length-1] instanceof ms.identifier)){
+				logger.l('array');
+				logger.l('DEBUG:',NS.statements[NS.statements.length-1] , NS.statements[NS.statements.length-1] instanceof ms.identifier);
 				var msArr = new ms.arr();
 				msArr.rawCode = NS.getRaw();
 				msArr.rawCode.shift();		//remove [...]
@@ -297,18 +352,23 @@ var ms = {
 				parsed = msArr;
 						//											===========[  BOOL  ]===========
 			} else if(NS.getRaw() === 'true'  || (NS.getRaw() === 'false')){
+				logger.l('bool');
 				parsed = new ms.bool(NS.getRaw() === 'true');
 						//											===========[  NULL  ]===========
 			} else if((NS.getRaw() === 'null')){
+				logger.l('null');
 				parsed = new ms.null();
 						//											===========[  NUMBER  ]===========
 			} else if(numRE.test(NS.getRaw()[0])){
+				logger.l('number');
 				parsed = new ms.num(Number(NS.getRaw()));
 						//											===========[  STRING  ]===========
 			} else if(NS.getRaw()[0] === "\"" || NS.getRaw()[0] === "\'"){
+				logger.l('string');
 				parsed = new ms.str(NS.getRaw().slice(1, -1));
 						//											===========[  IF FOR WHILE  ]===========
 			}else if(NS.getRaw() === 'for' || NS.getRaw() === 'if' || NS.getRaw() === 'while'){
+				logger.l('if/for/while');
 				parsed = [];
 				parsed.push(NS.getRaw());	//push in KW
 				group = new ms.group(NS.getRaw(+1));	//parse ()
@@ -320,8 +380,8 @@ var ms = {
 				NS.nextRaw(2);
 						//											===========[  ELSE  ]===========
 			} else if (NS.getRaw() === 'else'){
+				logger.l('else');
 				var prevCond = NS.statements[NS.statements.length-1];
-				logger.l(NS.statements);
 				prevCond.push(NS.getRaw());
 				if (NS.getRaw(+1) === 'if'){
 					prevCond.push(NS.getRaw(+1));	//push in if
@@ -340,6 +400,7 @@ var ms = {
 				}
 						//											===========[  DO  ]===========
 			} else if (NS.getRaw() === 'do'){
+				logger.l('do');
 				parsed = [];
 				parsed.push(NS.getRaw());	//do kw
 				group = new ms.group(NS.getRaw(+1));	//parse {}
@@ -353,26 +414,35 @@ var ms = {
 						//											===========[  VAR  ]===========
 			} else if (NS.getRaw() === '('){
 			} else if (NS.getRaw() === ')'){
+			} else if (NS.getRaw() === '{'){
+			} else if (NS.getRaw() === '}'){
 			} else if (NS.getRaw() === '.'){
 			} else if (NS.getRaw() === 'var'){
 				//do nothing
 						//											===========[  CALL  ]===========
 			} else if (NS.getRaw() instanceof Array && NS.getRaw()[0] === "(" && !this.isOperator(NS.getRaw(-1))){
+				logger.l('call');
 				this.parseCall(NS);
 						//											===========[  GROUP  ]===========
 			} else if (NS.getRaw() instanceof Array && NS.getRaw()[0] === "("){
+				logger.l('group');
 				parsed = new ms.group(NS.getRaw());
 				this.parseGroup(parsed);
 						//											===========[  EOS  ]===========
-			} else if (this.isOperator(NS.getRaw())){
-				parsed = NS.getRaw();
 			} else if (NS.getRaw() === ';'){
+				logger.l('EOS');
 				parsed = NS.getRaw();
-						//											===========[  IDENTIFIER  INDEX]===========
+						//											===========[  OPERATOR  ]===========
+			} else if (this.isOperator(NS.getRaw())){
+				logger.l('operator');
+				parsed = NS.getRaw();
+						//											===========[  IDENTIFIER  INDEX  ]===========
 			} else if(NS.getRaw() instanceof Array && NS.getRaw()[0] === '[' && (NS.statements[NS.statements.length-1] instanceof ms.identifier)){
+				logger.l('id index');
 				this.parseIdentifierIndex(NS);
 						//											===========[  IDENTIFIER  ]===========
 			} else {
+				logger.l('id');
 				parsed =  this.parseIdentifier(NS);
 			}
 			logger.l('parsed:', parsed);
@@ -391,6 +461,7 @@ var ms = {
 			logger.x('parseExpression');
 		},
 		parseIdentifier:function(NS){
+			logger.e();
 			var id;
 			if(NS.getRaw(-1) === '.' && NS.statements[NS.statements.length - 1] instanceof ms.identifier) {//existID
 				id = NS.statements[NS.statements.length - 1];
@@ -403,15 +474,22 @@ var ms = {
 			} else {																			//new id
 				id = new ms.identifier();
 				id.path.push([NS.getRaw()]);
+				logger.x();
 				return id;
 			}
+			logger.x();
 		},
 		parseIdentifierIndex:function(NS){
+			logger.e();
 			var id = NS.statements[NS.statements.length-1];
 			var path = id.path[id.path.length-1];
-			path.push(NS.getRaw()[1]);		//TODO:parse indexes as group`
+			var group = new ms.group(NS.getRaw());
+			this.parseGroup(group);
+			path.push(group);
+			logger.x();
 		},
 		parseCall:function(NS){
+			logger.e();
 			var call = [];
 			var group;
 			call.push('call');
@@ -421,6 +499,7 @@ var ms = {
 			this.parseGroup(group);
 			call.push(group);
 			NS.statements[NS.statements.length-1] = call;
+			logger.x();
 		},
 		parseGroup:function(NS){
 			logger.e();
